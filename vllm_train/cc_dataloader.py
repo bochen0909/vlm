@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from functools import partial
 import pyarrow.parquet as pq
 import os
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 import torch
-from torchvision import transforms
+from transformers import ViTModel, ViTImageProcessor, AutoTokenizer
+import numpy as np
+
+device = (
+    "cuda"
+    if torch.cuda.is_available()
+    else ("mps" if torch.backends.mps.is_available() else "cpu")
+)
 
 
 @dataclass(frozen=True)
@@ -28,14 +36,22 @@ class CCImageCaptionDataset(Dataset):
     def __init__(
         self,
         dataset_root: str | Path = "dataset",
+        vit_model: str = "google/vit-base-patch16-224",
+        tokenizer: Optional[str] = None,
         return_image_path: bool = False,
-        transform: Optional[Any] = None,
     ) -> None:
         self.images_root = Path(dataset_root, "cc_images")
         self.index_parquet = Path(dataset_root, "conceptual-captions-200k.parquet")
 
+        self.vit_processor = ViTImageProcessor.from_pretrained(vit_model)
+        self.vit_model = ViTModel.from_pretrained(vit_model)
+        self.vit_model.to(device)
+        if tokenizer is not None:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
+        else:
+            self.tokenizer = None
+
         self.return_image_path = return_image_path
-        self.transform = transform
         self._examples: list[CCExample] = self._build_index()
 
     def _build_image_paths(self):
@@ -90,40 +106,70 @@ class CCImageCaptionDataset(Dataset):
         ex = self._examples[idx]
         caption: Any = ex.caption
 
-        # Handle return_image_path flag
-        if self.return_image_path:
-            image_or_path: Any = Path(ex.image_path)
-        else:
-            with Image.open(ex.image_path) as im:
-                image_or_path = im.convert("RGB").copy()
+        with Image.open(ex.image_path) as im:
+            image = im.convert("RGB").copy()
 
-            # Apply image transform if specified
-            # NOTE: For DataLoader batching, transform should convert PIL to tensor
-            # Use transforms.ToTensor() or a compose that includes it
-            if self.transform is not None:
-                image_or_path = self.transform(image_or_path)
+        image = self.vit_processor(images=image, return_tensors="pt").to(
+            self.vit_model.device
+        )
+        image = self.vit_model(**image).last_hidden_state
+        # Remove batch dimension (will be added back in collate_fn)
+        image = image.squeeze(
+            0
+        )  # [1, num_patches, hidden_dim] -> [num_patches, hidden_dim]
 
-        return image_or_path, caption
+        # Return raw caption string - tokenization will happen in collate_fn for proper batching
+        return image, caption
+
+
+def collate_fn(
+    batch: List[Tuple[Any, Any]], tokenizer: Optional[AutoTokenizer] = None
+) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    images, captions = zip(*batch)
+
+    image_tensors = torch.stack(images, dim=0).to(device)
+    if tokenizer is not None:
+        # Tokenize with padding
+        tokenized = tokenizer(
+            list(captions),
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512,
+        )
+        tokenized = {k: v.to(device) for k, v in tokenized.items()}
+        return image_tensors, tokenized
+    else:
+        # No tokenizer - return captions as-is (list of strings)
+        return image_tensors, list(captions)
 
 
 if __name__ == "__main__":
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-        ]
+
+    dataset = CCImageCaptionDataset(
+        vit_model="google/vit-base-patch16-224",
+        tokenizer="distilbert/distilbert-base-uncased",
     )
 
-    dataset = CCImageCaptionDataset(transform=transform)
-    example = dataset[16200]
-    print(
-        f"Single example - image shape: {example[0].shape}, caption: {example[1][:50]}..."
-    )
+    # Create collate function with tokenizer from dataset
+    collate_fn_with_tokenizer = partial(collate_fn, tokenizer=dataset.tokenizer)
 
-    # Create DataLoader - images will be batched into tensors
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=0)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=16,
+        shuffle=True,
+        num_workers=0,
+        collate_fn=collate_fn_with_tokenizer,
+    )
     for batch in dataloader:
         images, captions = batch
-        print(f"Batch - images shape: {images.shape}")  # Should be [16, C, H, W]
-        print(f"Batch - captions: {len(captions)} items")
-        print(f"First caption: {captions[0]}")
+        print(f"Batch - images shape: {images.shape}")
+        if isinstance(captions, dict):
+            print(captions["input_ids"])
+            print(f"Batch - captions input_ids shape: {captions['input_ids'].shape}")
+            print(
+                f"Batch - captions attention_mask shape: {captions['attention_mask'].shape}"
+            )
+        else:
+            print(f"Batch - captions: {len(captions)} items")
         break
