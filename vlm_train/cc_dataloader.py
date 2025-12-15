@@ -7,7 +7,7 @@ from functools import partial
 import pyarrow.parquet as pq
 import os
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 from transformers import ViTModel, ViTImageProcessor, AutoTokenizer
 import numpy as np
@@ -108,11 +108,10 @@ class CCImageCaptionDataset(Dataset):
 
         with Image.open(ex.image_path) as im:
             image = im.convert("RGB").copy()
-
-        image = self.vit_processor(images=image, return_tensors="pt").to(
-            self.vit_model.device
-        )
-        image = self.vit_model(**image).last_hidden_state
+        
+        with torch.no_grad():
+            image = self.vit_processor(images=image, return_tensors="pt").to(self.vit_model.device)
+            image = self.vit_model(**image).last_hidden_state
         # Remove batch dimension (will be added back in collate_fn)
         image = image.squeeze(
             0
@@ -144,24 +143,49 @@ def collate_fn(
         return image_tensors, list(captions)
 
 
-if __name__ == "__main__":
+def get_dataloaders(batch_size=16, split_ratio=0.9, seed=42):
 
     dataset = CCImageCaptionDataset(
         vit_model="google/vit-base-patch16-224",
         tokenizer="distilbert/distilbert-base-uncased",
     )
 
+    # Split dataset into train and test
+    train_size = int(split_ratio * len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = random_split(
+        dataset, 
+        [train_size, test_size],
+        generator=torch.Generator().manual_seed(seed)
+    )
+
     # Create collate function with tokenizer from dataset
     collate_fn_with_tokenizer = partial(collate_fn, tokenizer=dataset.tokenizer)
 
-    dataloader = DataLoader(
-        dataset,
-        batch_size=16,
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
         shuffle=True,
         num_workers=0,
         collate_fn=collate_fn_with_tokenizer,
     )
-    for batch in dataloader:
+    
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=collate_fn_with_tokenizer,
+    )
+    
+    return train_loader, test_loader
+
+
+if __name__ == "__main__":
+    train_loader, test_loader = get_dataloaders()
+    print(f"Train loader: {len(train_loader)} batches")
+    print(f"Test loader: {len(test_loader)} batches")
+    for batch in train_loader:
         images, captions = batch
         print(f"Batch - images shape: {images.shape}")
         if isinstance(captions, dict):
