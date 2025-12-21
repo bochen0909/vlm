@@ -174,6 +174,19 @@ class QFormer(nn.Module):
                 params["default"].append(p)
         return params
 
+    def encode_image(self, visual_feats):
+
+        B = visual_feats.size(0)
+        x = self.query_embeddings.expand(B, -1, -1)  # (B, Q, H)
+        for i, layer in enumerate(self.encoder_layers):
+            
+            x = layer(x)[0]
+            if str(i) in self.cross_blocks:
+                x = self.cross_blocks[str(i)](
+                    x, visual_feats)
+
+        return x, x.mean(1)
+
     def forward(self, visual_feats, 
                 text_input_ids,
                 text_attention_mask=None,
