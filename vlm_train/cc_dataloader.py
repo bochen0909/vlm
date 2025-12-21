@@ -143,11 +143,14 @@ def collate_fn(
         return image_tensors, list(captions)
 
 
-def get_dataloaders(batch_size=16, split_ratio=0.9, seed=42):
-
-    dataset = CCImageCaptionDataset(
+def get_dataloaders(
         vit_model="google/vit-base-patch16-224",
         tokenizer="distilbert/distilbert-base-uncased",
+        batch_size=16, split_ratio=0.9, seed=42):
+
+    dataset = CCImageCaptionDataset(
+        vit_model=vit_model,
+        tokenizer=tokenizer
     )
 
     # Split dataset into train and test

@@ -2,7 +2,7 @@
 # Startup script for remote instance
 
 set -e
-
+export TERM=xterm-256color
 echo "Updating package lists..."
 apt-get update -y
 
