@@ -1,7 +1,7 @@
 import torch
 import os
 import random
-from lm_train import LM_2_VLM, device
+from lm_to_vlm import LM_2_VLM, device
 from lm_dataloader import LMDataset, get_train_dataset
 from transformers import AutoTokenizer
 import subprocess
