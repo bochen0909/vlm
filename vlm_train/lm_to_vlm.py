@@ -1,6 +1,9 @@
 from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 from q_former import QFormer
 import torch
+import torch.nn as nn
+import os
+from peft import get_peft_model, LoraConfig, TaskType, set_peft_model_state_dict
 
 device = (
     "cuda"
@@ -16,13 +19,28 @@ class LM_2_VLM(nn.Module):
         self.llm = AutoModelForCausalLM.from_pretrained(
             model_name, dtype=torch.bfloat16).to(device)
         
-        self.llm.eval()
-        for params in self.llm.parameters():
-            params.requires_grad = False
+        # Configure LoRA
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False, 
+            r=16,
+            lora_alpha=32,
+            lora_dropout=0.1,
+            target_modules=["q_proj", "v_proj"] 
+        )
+        
+        self.llm = get_peft_model(self.llm, peft_config)
+        self.llm.print_trainable_parameters()
 
         self.qformer = QFormer.from_pretrained(qformer_model_path).to(device)
-        self.adapter = nn.Linear(in_features=self.qformer.hidden_size, 
-                                 out_features=self.llm.config.hidden_size).to(device)
+        self.adapter = nn.Sequential(
+            nn.Linear(in_features=self.qformer.hidden_size, 
+                    out_features=self.llm.config.hidden_size),
+            nn.ReLU(),
+            nn.Linear(in_features=self.llm.config.hidden_size, 
+                    out_features=self.llm.config.hidden_size),
+        ).to(device)
+
         self.pad_token_id = pad_token_id or self.llm.config.eos_token_id
 
     def forward(self, img, prefix_ids, assistant_ids):
@@ -44,12 +62,9 @@ class LM_2_VLM(nn.Module):
             (assistant_ids!=self.pad_token_id).long()
         ], dim=1)
 
-        # Calculate position_ids to handle left-padding (ignore padding tokens in count)
         position_ids = attention_mask.cumsum(dim=1) - 1
-        position_ids.masked_fill_(attention_mask == 0, 0) # Clamp padding positions to 0
+        position_ids.masked_fill_(attention_mask == 0, 0) 
         
-        # Construct Labels
-        # -100 means loss is ignored for these tokens
         prefix_labels = torch.full_like(prefix_ids, -100)
         image_labels = torch.full((img_emb.shape[0], img_emb.shape[1]), -100, device=device, dtype=torch.long)
         assistant_labels = assistant_ids.clone()
@@ -66,10 +81,10 @@ class LM_2_VLM(nn.Module):
 
     def save_checkpoint(self, path):
         os.makedirs(path, exist_ok=True)
-        # Save QFormer using its native method
         self.qformer.save_pretrained(os.path.join(path, "qformer"))
-        # Save Adapter
         torch.save(self.adapter.state_dict(), os.path.join(path, "adapter.pt"))
+        # Save LoRA Adapter
+        self.llm.save_pretrained(os.path.join(path, "lora_adapter"))
         print(f"Saved checkpoint to {path}")
 
     def load_checkpoint(self, path):
@@ -85,29 +100,36 @@ class LM_2_VLM(nn.Module):
         if os.path.exists(adapter_path):
             self.adapter.load_state_dict(torch.load(adapter_path, map_location=device))
             print("Loaded Adapter weights.")
+            
+        # Load LoRA Adapter weights safely
+        lora_path = os.path.join(path, "lora_adapter")
+        if os.path.exists(lora_path):
+            # Check for both .bin and .safetensors
+            weights_file = os.path.join(lora_path, "adapter_model.bin")
+            if not os.path.exists(weights_file):
+                weights_file = os.path.join(lora_path, "adapter_model.safetensors")
+            
+            if os.path.exists(weights_file):
+                if weights_file.endswith(".safetensors"):
+                    from safetensors.torch import load_file
+                    adapters_weights = load_file(weights_file, device=device)
+                else:
+                    adapters_weights = torch.load(weights_file, map_location=device)
+                
+                set_peft_model_state_dict(self.llm, adapters_weights)
+                print("Loaded LoRA Adapter weights.")
 
     @torch.no_grad()
     def generate(self, img, prefix_ids, max_new_tokens=100, temperature=0.7, top_p=0.9, repetition_penalty=1.2):
-        """
-        Autoregressively generate text given an image and a prefix text.
-        """
-        # 1. Encode Image
         img_emb, _ = self.qformer.encode_image(img)
         img_emb = self.adapter(img_emb)
         img_emb = img_emb.to(dtype=self.llm.dtype)
 
-        # 2. Encode Prefix Text
         prefix_emb = self.llm.get_input_embeddings()(prefix_ids)
 
-        # 3. Concatenate [Prefix, Image] to form the Prompt
-        # Structure matches training: Prefix -> Image -> (Generation starts here)
         inputs_embeds = torch.cat([prefix_emb, img_emb], dim=1)
-        
-        # 4. Attention Mask
         attention_mask = torch.ones(inputs_embeds.shape[:2], device=inputs_embeds.device, dtype=torch.long)
         
-        # 5. Generate
-        # We pass inputs_embeds instead of input_ids.
         output_ids = self.llm.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -121,4 +143,3 @@ class LM_2_VLM(nn.Module):
         )
         
         return output_ids
-

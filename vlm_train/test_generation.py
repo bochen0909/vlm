@@ -45,6 +45,7 @@ def main():
             {"role": "system", "content": "Answer the user's question truthfully"},
             {"role": "user", "content": prompt_text},
         ],
+        add_generation_prompt=True,
         return_tensors="pt",
     ).to(device)
 

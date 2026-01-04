@@ -14,6 +14,7 @@ device = (
     else ("mps" if torch.backends.mps.is_available() else "cpu")
 )
 if __name__ == "__main__":
+    model_id = "vlm_peft"
     model_name = "HuggingFaceTB/SmolLM-135M-Instruct"
 
     train_loader, test_loader = get_dataloader(batch_size=8, tokenizer_name=model_name)
@@ -26,13 +27,13 @@ if __name__ == "__main__":
     pad_token_id = tokenizer.pad_token_id
     model = LM_2_VLM(
         model_name=model_name,
-        qformer_model_path="models/trained_qformer_1/best",
+        qformer_model_path=f"models/trained_qformer_1/best",
         pad_token_id=pad_token_id)     
     model.to(device)
 
     # --- Optimizer Setup ---
-    lr_slow = 1e-6
-    lr_fast = 1e-5
+    lr_slow = 5e-5
+    lr_fast = 2e-4
 
     qformer_params = model.qformer.get_grouped_params()
     optimizer = optim.AdamW([
@@ -40,6 +41,7 @@ if __name__ == "__main__":
         {"params": qformer_params["cross_blocks"], "lr": lr_slow},
         {"params": qformer_params["query_embeddings"], "lr": lr_slow},
         {"params": model.adapter.parameters(), "lr": lr_fast},
+        {"params": filter(lambda p: p.requires_grad, model.llm.parameters()), "lr": lr_fast},
     ])
 
     # --- Training Loop ---
@@ -65,15 +67,12 @@ if __name__ == "__main__":
                 losses.append(output.loss.item())
                 
         model.train()
-        # Ensure LLM stays in eval mode
-        model.llm.eval()
         
         if not losses:
             return float('inf')
         return np.mean(losses)
 
     model.train() # Set to train mode (affects dropout/batchnorm in QFormer/Adapter)
-    model.llm.eval()
 
     print("Starting training...")
     for epoch in range(epochs):
@@ -91,20 +90,20 @@ if __name__ == "__main__":
             optimizer.step()
             
             pbar.set_postfix(loss=f"{loss.item():.4f}")
-            
+
             if step % log_every == 0:
                 test_loss = run_inference(model, test_loader)
                 tqdm.write(f"Step {step} | Train Loss: {loss.item():.4f} | Test Loss: {test_loss:.4f}")
-                
+
                 if test_loss < best_test_loss:
                     best_test_loss = test_loss
-                    model.save_checkpoint("models/vlm_checkpoints/best")
+                    model.save_checkpoint(f"models/{model_id}/best")
                     tqdm.write(f"New best model saved! Loss: {best_test_loss:.4f}")
 
-            if step % save_every == 0:
-                model.save_checkpoint(f"models/vlm_checkpoints/{latest}")
+        if step % save_every == 0:
+            model.save_checkpoint(f"models/{model_id}/latest")
 
     # Save final model
-    model.save_checkpoint("models/vlm_checkpoints/final")
+    model.save_checkpoint(f"models/{model_id}/final")
     print("Training complete.")
 
