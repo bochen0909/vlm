@@ -74,6 +74,8 @@ class LMDataset(Dataset):
                 continue
             for file in subdir1.iterdir():
                 if file.is_file() and file.suffix.lower() == ".jpg":
+                    if file.name.startswith("."):
+                        continue
                     file_idx = int(file.name.split(".")[0])
                     jpg_files[file_idx] = os.path.join(
                         self.images_root, subdir1.name, file.name
@@ -120,9 +122,11 @@ class LMDataset(Dataset):
 
         with Image.open(ex.image_path) as im:
             image = im.convert("RGB").copy()
-        
+
         with torch.no_grad():
-            image = self.vit_processor(images=image, return_tensors="pt").to(self.vit_model.device)
+            image = self.vit_processor(images=image, return_tensors="pt").to(
+                self.vit_model.device
+            )
             image = self.vit_model(**image).last_hidden_state
         # [1, num_patches, hidden_dim] -> [num_patches, hidden_dim]
         image = image.squeeze(0)
@@ -137,16 +141,15 @@ class LMDataset(Dataset):
         ).to(device)
 
         assistant_prompt = self.tokenizer.apply_chat_template(
-            [{"role": "assistant", "content": caption}],
-            return_tensors="pt"
+            [{"role": "assistant", "content": caption}], return_tensors="pt"
         ).to(device)
-        
+
         return {
             "image_filename": ex.image_path,
             "caption": caption,
             "image": image,
             "prefix": user_prompt,
-            "assistant_prompt": assistant_prompt
+            "assistant_prompt": assistant_prompt,
         }
 
 
@@ -156,11 +159,18 @@ class LMCollator:
 
     def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         images = [item["image"] for item in batch]
-        
+
         # Ensure 1D for padding
-        prefixes = [item["prefix"].squeeze(0) if item["prefix"].ndim == 2 else item["prefix"] for item in batch]
+        prefixes = [
+            item["prefix"].squeeze(0) if item["prefix"].ndim == 2 else item["prefix"]
+            for item in batch
+        ]
         assistant_prompts = [
-            item["assistant_prompt"].squeeze(0) if item["assistant_prompt"].ndim == 2 else item["assistant_prompt"]
+            (
+                item["assistant_prompt"].squeeze(0)
+                if item["assistant_prompt"].ndim == 2
+                else item["assistant_prompt"]
+            )
             for item in batch
         ]
 
@@ -171,16 +181,22 @@ class LMCollator:
         if pad_id is None:
             pad_id = self.tokenizer.eos_token_id
             if pad_id is None:
-                raise ValueError("Tokenizer must have a pad_token_id or eos_token_id set.")
+                raise ValueError(
+                    "Tokenizer must have a pad_token_id or eos_token_id set."
+                )
 
         # Left Pad Prefixes manually
         max_prefix_len = max([p.size(0) for p in prefixes])
-        prefixes_padded = torch.full((len(prefixes), max_prefix_len), pad_id, dtype=torch.long)
+        prefixes_padded = torch.full(
+            (len(prefixes), max_prefix_len), pad_id, dtype=torch.long
+        )
         for i, p in enumerate(prefixes):
-            prefixes_padded[i, -len(p):] = p
+            prefixes_padded[i, -len(p) :] = p
 
         # Pad sequences (right padding) for assistant prompts
-        assistant_prompts_padded = pad_sequence(assistant_prompts, batch_first=True, padding_value=pad_id)
+        assistant_prompts_padded = pad_sequence(
+            assistant_prompts, batch_first=True, padding_value=pad_id
+        )
 
         return {
             "image": images.to(device),
@@ -188,73 +204,63 @@ class LMCollator:
             "assistant_prompt": assistant_prompts_padded.to(device),
         }
 
+
 def get_train_dataset(split_ratio=0.9, seed=42, tokenizer_name="Qwen/Qwen3-0.6B"):
-    
-    dataset = LMDataset(
-        tokenizer=tokenizer_name
-    )
+
+    dataset = LMDataset(tokenizer=tokenizer_name)
     # Ensure pad_token is set for Qwen if using it directly, though Collator handles fallback to EOS
     if dataset.tokenizer.pad_token is None:
         dataset.tokenizer.pad_token = dataset.tokenizer.eos_token
-        
+
     # Split dataset into train and test
     train_size = int(split_ratio * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = random_split(
-        dataset, 
-        [train_size, test_size],
-        generator=torch.Generator().manual_seed(seed)
+        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(seed)
     )
     return train_dataset.dataset
 
 
-def get_dataloader(batch_size=4, split_ratio=0.9, seed=42, tokenizer_name="Qwen/Qwen3-0.6B"):
-    
-    dataset = LMDataset(
-        tokenizer=tokenizer_name
-    )
+def get_dataloader(
+    batch_size=4, split_ratio=0.9, seed=42, tokenizer_name="Qwen/Qwen3-0.6B"
+):
+
+    dataset = LMDataset(tokenizer=tokenizer_name)
     # Ensure pad_token is set for Qwen if using it directly, though Collator handles fallback to EOS
     if dataset.tokenizer.pad_token is None:
         dataset.tokenizer.pad_token = dataset.tokenizer.eos_token
-        
+
     # Split dataset into train and test
     train_size = int(split_ratio * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = random_split(
-        dataset, 
-        [train_size, test_size],
-        generator=torch.Generator().manual_seed(seed)
+        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(seed)
     )
 
     collator = LMCollator(dataset.tokenizer)
-    
+
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=batch_size, 
-        shuffle=True,
-        collate_fn=collator
+        train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collator
     )
-    
+
     test_loader = DataLoader(
-        test_dataset, 
-        batch_size=batch_size, 
-        shuffle=False,
-        collate_fn=collator
+        test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collator
     )
-    
+
     return train_loader, test_loader
+
 
 if __name__ == "__main__":
 
     train_loader, test_loader = get_dataloader()
     print(f"Train loader batches: {len(train_loader)}")
     print(f"Test loader batches: {len(test_loader)}")
-    
+
     for d in train_loader:
         print("Image shape:", d["image"].shape)
         print("Prefix shape:", d["prefix"].shape)
         print("Assistant prompt shape:", d["assistant_prompt"].shape)
         print(d["prefix"])
         print(d["assistant_prompt"])
-        
+
         break
