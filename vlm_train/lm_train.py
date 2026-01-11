@@ -68,6 +68,7 @@ if __name__ == "__main__":
     log_every = 20
     save_every = 100
     warmup_steps = 100
+    max_grad_norm = 1.0  # Gradient clipping threshold
 
     # Calculate total training steps
     total_steps = len(train_loader) * epochs // accelerator.gradient_accumulation_steps
@@ -136,6 +137,11 @@ if __name__ == "__main__":
                     loss = output.loss
 
                 accelerator.backward(loss)
+
+                # Gradient clipping
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
+
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()

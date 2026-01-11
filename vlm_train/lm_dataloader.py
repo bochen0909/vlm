@@ -141,8 +141,21 @@ class LMDataset(Dataset):
         ).to(device)
 
         assistant_prompt = self.tokenizer.apply_chat_template(
-            [{"role": "assistant", "content": caption}], return_tensors="pt"
-        ).to(device)
+            [{"role": "assistant", "content": caption}],
+            return_tensors="pt",
+            add_generation_prompt=False,
+        )
+
+        # Ensure sequence ends with EOS token (trim any trailing tokens like newlines)
+        # Find the last occurrence of EOS token and truncate after it
+        eos_positions = (assistant_prompt[0] == self.tokenizer.eos_token_id).nonzero(
+            as_tuple=True
+        )[0]
+        if len(eos_positions) > 0:
+            last_eos_idx = eos_positions[-1].item()
+            assistant_prompt = assistant_prompt[:, : last_eos_idx + 1]
+
+        assistant_prompt = assistant_prompt.to(device)
 
         return {
             "image_filename": ex.image_path,
