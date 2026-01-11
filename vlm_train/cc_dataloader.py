@@ -60,6 +60,8 @@ class CCImageCaptionDataset(Dataset):
                 continue
             for file in subdir1.iterdir():
                 if file.is_file() and file.suffix.lower() == ".jpg":
+                    if file.name.startswith("."):
+                        continue
                     file_idx = int(file.name.split(".")[0])
                     jpg_files[file_idx] = os.path.join(
                         self.images_root, subdir1.name, file.name
@@ -106,9 +108,11 @@ class CCImageCaptionDataset(Dataset):
 
         with Image.open(ex.image_path) as im:
             image = im.convert("RGB").copy()
-        
+
         with torch.no_grad():
-            image = self.vit_processor(images=image, return_tensors="pt").to(self.vit_model.device)
+            image = self.vit_processor(images=image, return_tensors="pt").to(
+                self.vit_model.device
+            )
             image = self.vit_model(**image).last_hidden_state
         # Remove batch dimension (will be added back in collate_fn)
         image = image.squeeze(
@@ -142,22 +146,20 @@ def collate_fn(
 
 
 def get_dataloaders(
-        vit_model="google/vit-base-patch16-224",
-        tokenizer="distilbert/distilbert-base-uncased",
-        batch_size=16, split_ratio=0.9, seed=42):
+    vit_model="google/vit-base-patch16-224",
+    tokenizer="distilbert/distilbert-base-uncased",
+    batch_size=16,
+    split_ratio=0.9,
+    seed=42,
+):
 
-    dataset = CCImageCaptionDataset(
-        vit_model=vit_model,
-        tokenizer=tokenizer
-    )
+    dataset = CCImageCaptionDataset(vit_model=vit_model, tokenizer=tokenizer)
 
     # Split dataset into train and test
     train_size = int(split_ratio * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = random_split(
-        dataset, 
-        [train_size, test_size],
-        generator=torch.Generator().manual_seed(seed)
+        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(seed)
     )
 
     # Create collate function with tokenizer from dataset
@@ -170,7 +172,7 @@ def get_dataloaders(
         num_workers=0,
         collate_fn=collate_fn_with_tokenizer,
     )
-    
+
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
@@ -178,7 +180,7 @@ def get_dataloaders(
         num_workers=0,
         collate_fn=collate_fn_with_tokenizer,
     )
-    
+
     return train_loader, test_loader
 
 
