@@ -29,7 +29,7 @@ if __name__ == "__main__":
         project_dir="logs",
     )
 
-    model_id = "vlm_peft"
+    model_id = "vlm_peft_2"
     model_name = "HuggingFaceTB/SmolLM-135M-Instruct"
 
     train_loader, test_loader = get_dataloader(batch_size=8, tokenizer_name=model_name)
@@ -46,8 +46,8 @@ if __name__ == "__main__":
     )
 
     # --- Optimizer Setup ---
-    lr_slow = 5e-5
-    lr_fast = 2e-4
+    lr_slow = 1e-4
+    lr_fast = 5e-4
 
     qformer_params = model.qformer.get_grouped_params()
     optimizer = optim.AdamW(

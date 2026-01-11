@@ -9,6 +9,7 @@ dependencies = [
     "datasets>=4.4.1",
     "img2dataset>=1.47.0",
     "peft>=0.18.0",
+    "rich>=14.2.0",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
     "transformers>=4.57.3",

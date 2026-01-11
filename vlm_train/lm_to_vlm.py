@@ -23,6 +23,7 @@ class LM_2_VLM(nn.Module):
         self.llm = AutoModelForCausalLM.from_pretrained(
             model_name, torch_dtype=torch.bfloat16
         ).to(device)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         # Configure LoRA
         peft_config = LoraConfig(
@@ -156,8 +157,17 @@ class LM_2_VLM(nn.Module):
         img_emb = img_emb.to(dtype=self.llm.dtype)
 
         prefix_emb = self.llm.get_input_embeddings()(prefix_ids)
+        assistant_part = self.tokenizer.apply_chat_template(
+            [{"role": "assistant", 
+              "content": ""}], 
+            add_generation_prompt=False)
+        assistant_part = torch.tensor(assistant_part[:-2], device=prefix_emb.device).repeat(prefix_emb.shape[0], 1)
+        assistant_emb = self.llm.get_input_embeddings()(assistant_part)
 
-        inputs_embeds = torch.cat([prefix_emb, img_emb], dim=1)
+        inputs_embeds = torch.cat([prefix_emb, 
+                                   img_emb,
+                                   assistant_emb
+                                   ], dim=1)
         attention_mask = torch.ones(
             inputs_embeds.shape[:2], device=inputs_embeds.device, dtype=torch.long
         )
@@ -170,8 +180,8 @@ class LM_2_VLM(nn.Module):
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             do_sample=True,
-            pad_token_id=self.pad_token_id,
-            eos_token_id=self.llm.config.eos_token_id,
+            pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
         )
 
         return output_ids

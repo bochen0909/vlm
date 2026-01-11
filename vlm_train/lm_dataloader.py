@@ -218,7 +218,7 @@ class LMCollator:
         }
 
 
-def get_train_dataset(split_ratio=0.9, seed=42, tokenizer_name="Qwen/Qwen3-0.6B"):
+def get_dataset(split_ratio=0.9, seed=42, tokenizer_name="Qwen/Qwen3-0.6B"):
 
     dataset = LMDataset(tokenizer=tokenizer_name)
     # Ensure pad_token is set for Qwen if using it directly, though Collator handles fallback to EOS
@@ -231,7 +231,7 @@ def get_train_dataset(split_ratio=0.9, seed=42, tokenizer_name="Qwen/Qwen3-0.6B"
     train_dataset, test_dataset = random_split(
         dataset, [train_size, test_size], generator=torch.Generator().manual_seed(seed)
     )
-    return train_dataset.dataset
+    return train_dataset.dataset, test_dataset.dataset
 
 
 def get_dataloader(
