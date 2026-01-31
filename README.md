@@ -2,11 +2,17 @@
 
 A PyTorch implementation for training vision-language models from scratch using Q-Former architecture and small language models. This project demonstrates how to build a complete VLM pipeline that can understand and describe images.
 
-**GitHub Repository:** [https://github.com/avbiswas/vlm](https://github.com/avbiswas/vlm)
-
-**YouTube Tutorial:** [https://youtu.be/Oj27kALfvr0](https://youtu.be/Oj27kALfvr0)
-
-**Support on Patreon:** [https://www.patreon.com/NeuralBreakdownwithAVB](https://www.patreon.com/NeuralBreakdownwithAVB)
+<p align="center">
+  <a href="https://github.com/avbiswas/vlm">
+    <img src="https://img.shields.io/badge/GitHub-avbiswas%2Fvlm-blue?logo=github" alt="GitHub Repository">
+  </a>
+  <a href="https://youtu.be/Oj27kALfvr0">
+    <img src="https://img.shields.io/badge/YouTube-Watch%20Tutorial-red?logo=youtube" alt="YouTube Tutorial">
+  </a>
+  <a href="https://www.patreon.com/NeuralBreakdownwithAVB">
+    <img src="https://img.shields.io/badge/Patreon-Support%20Me-orange?logo=patreon" alt="Support on Patreon">
+  </a>
+</p>
 
 ## Overview
 
