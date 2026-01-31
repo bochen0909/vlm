@@ -4,10 +4,10 @@ import os
 import random
 
 # Import project modules
-from vlm_train.cc_dataloader import CCImageCaptionDataset, get_dataloaders
-from vlm_train.q_former import QFormer
-from vlm_train.calculate_recall import calculate_recall
-from vlm_train.utils import *
+from datasets.cc_dataloader import CCImageCaptionDataset, get_dataloaders
+from networks.q_former import QFormer
+from utils.calculate_recall import calculate_recall
+from utils.utils import *
 
 def main():
     # Setup device

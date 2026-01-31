@@ -4,7 +4,7 @@ from PIL import Image
 from io import BytesIO
 from datasets import load_dataset
 
-PARQUET_PATH = "vllm_train/conceptual-captions-200k.parquet"
+PARQUET_PATH = "dataset/conceptual-captions-200k.parquet"
 # Configuration
 LIMIT = 200_000
 DATASET_NAME = "flax-community/conceptual-captions-12"

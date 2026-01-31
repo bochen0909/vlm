@@ -1,8 +1,8 @@
 import numpy as np
-from q_former import QFormer 
+from networks.q_former import QFormer
 import torch
 from transformers import DistilBertModel
-from cc_dataloader import get_dataloaders
+from datasets.cc_dataloader import get_dataloaders
 import torch.nn.functional as F
 import torch.optim as optim
 from tqdm import tqdm
@@ -18,7 +18,7 @@ bert = DistilBertModel.from_pretrained('distilbert-base-uncased')
 qformer = QFormer(bert)
 qformer.to(device)
 
-model_id = "new1"
+model_id = "trained_qformer"
 lr = 1e-4
 batch_size = 8
 

@@ -1,10 +1,10 @@
-from lm_dataloader import get_dataloader
+from datasets.lm_dataloader import get_dataloader
 import torch
 import torch.nn as nn
 import os
 import torch.optim as optim
 from tqdm import tqdm
-from lm_to_vlm import LM_2_VLM
+from networks.lm_to_vlm import LM_2_VLM
 import numpy as np
 from transformers import (
     AutoConfig,
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         project_dir="logs",
     )
 
-    model_id = "vlm_peft_2"
+    model_id = "vlm_peft"
     model_name = "HuggingFaceTB/SmolLM-135M-Instruct"
 
     train_loader, test_loader = get_dataloader(batch_size=8, tokenizer_name=model_name)
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     pad_token_id = tokenizer.pad_token_id
     model = LM_2_VLM(
         model_name=model_name,
-        qformer_model_path=f"models/trained_qformer_1/best",
+        qformer_model_path=f"models/trained_qformer/best",
         pad_token_id=pad_token_id,
     )
 

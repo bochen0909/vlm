@@ -15,8 +15,8 @@ import sys
 # Suppress torch warnings
 torch.set_warn_always(False)
 
-from lm_to_vlm import LM_2_VLM, device
-from lm_dataloader import LMDataset, get_dataset
+from networks.lm_to_vlm import LM_2_VLM, device
+from datasets.lm_dataloader import LMDataset, get_dataset
 from transformers import AutoTokenizer
 import subprocess
 from rich.console import Console
