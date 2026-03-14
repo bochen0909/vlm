@@ -107,7 +107,7 @@ This will download ~200k image-caption pairs to `dataset/conceptual-captions-200
 4. **Download images using img2dataset**
 
 ```bash
-img2dataset --url_list dataset/conceptual-captions-200k.parquet \
+uv run img2dataset --url_list dataset/conceptual-captions-200k.parquet \
             --input_format "parquet" \
             --url_col "image_url" \
             --caption_col "caption" \
