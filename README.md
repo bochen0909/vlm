@@ -109,7 +109,7 @@ This will download ~200k image-caption pairs to `dataset/conceptual-captions-200
 ```bash
 uv run img2dataset --url_list dataset/conceptual-captions-200k.parquet \
             --input_format "parquet" \
-            --url_col "image_url" \
+            --url_col "url" \
             --caption_col "caption" \
             --output_folder dataset/cc_images \
             --processes_count 16 \
