@@ -16,7 +16,7 @@ class LM_2_VLM(nn.Module):
     def __init__(
         self,
         model_name,
-        qformer_model_path="models/trained_qformer_1/best",
+        qformer_model_path="models/trained_qformer/best",
         pad_token_id=None,
     ):
         super().__init__()
